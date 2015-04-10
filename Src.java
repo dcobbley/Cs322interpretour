@@ -11,6 +11,9 @@
 abstract class Expr {
   abstract Value    eval(Env env);
   abstract String show();
+  Env evalRef(Env env) {
+	return new ValEnv("", eval(env), null);
+  }
 }
 
 class VarDecl extends Stmt {
@@ -21,7 +24,7 @@ class VarDecl extends Stmt {
   }
 
   Env exec(Program prog, Env env) {
-    return new Env(var, expr.eval(env), env);
+    return new ValEnv(var, expr.eval(env), env);
   }
 
   void print(int ind) {
@@ -36,6 +39,10 @@ class Var extends Expr {
 
   Value    eval(Env env) { return Env.lookup(env,name).getValue(); }
   String show() { return name; }
+
+  Env evalRef(Env env) {
+	return Env.lookup(env, name);	    
+  }
 }
 
 class Int extends Expr {
@@ -274,12 +281,39 @@ class Print extends Stmt {
   } 
   }
 
+  class Formal {
+    protected String name;
+
+    Formal(String name) {
+      this.name = name;
+    }
+
+    public String toString() {
+      return name;
+    }
+    Env extend(Env env, Expr actual, Env newenv) {
+      return new ValEnv(name,actual.eval(env),newenv);
+    }
+  }
+
+  class ByRef extends Formal {
+    ByRef(String name) { super(name); }
+
+    public String toString() {
+      return "ref " + name;
+    }
+    
+    Env extend(Env env, Expr actual, Env newenv) {
+      return new RefEnv(name, actual.evalRef(env), newenv);
+    }
+  }
+
   class Proc {
      private String   name;
-     private String[] formals;
+     private Formal[] formals;
      private Stmt     body;
 
-     Proc(String name, String[] formals, Stmt body) {
+     Proc(String name, Formal[] formals, Stmt body) {
        this.name = name; this.formals = formals; this.body = body;
      }
 
@@ -302,14 +336,14 @@ class Print extends Stmt {
        System.out.println("}");
      }
 
-  void call(Program prog, Env env, Expr[] actuals) {
+    void call(Program prog, Env env, Expr[] actuals) {
     if (actuals.length!=formals.length) {
       System.out.println("ABORT: Wrong number of arguments for " + name);
       System.exit(1);
     }
     Env newenv = null;
     for (int i=0; i<actuals.length; i++) {
-      newenv = new Env(formals[i], actuals[i].eval(env), newenv);
+      newenv = formals[i].extend(env,actuals[i],newenv);
     }
     body.exec(prog, newenv);
   }
